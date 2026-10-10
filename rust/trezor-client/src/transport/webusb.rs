@@ -79,7 +79,7 @@ impl WebUsbTransport {
     pub fn find_devices(debug: bool) -> Result<Vec<AvailableDevice>, Error> {
         let mut devices = Vec::new();
 
-        for dev in rusb::devices().unwrap().iter() {
+        for dev in rusb::devices()?.iter() {
             let desc = dev.device_descriptor()?;
             let dev_id = (desc.vendor_id(), desc.product_id());
 
