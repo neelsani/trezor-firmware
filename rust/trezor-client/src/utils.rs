@@ -63,6 +63,9 @@ pub fn coin_name(network: Network) -> Result<String> {
         Network::Regtest => "Regtest",
         Network::Signet => "Signet",
         Network::Testnet | Network::Testnet4 => "Testnet",
+        // Unreachable with current `bitcoin` (all variants covered), kept for
+        // versions where `Network` is non-exhaustive.
+        #[allow(unreachable_patterns)]
         _ => return Err(Error::UnsupportedNetwork),
     }
     .to_owned())
