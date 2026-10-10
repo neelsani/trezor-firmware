@@ -51,11 +51,19 @@ pub enum Error {
     /// Provided entropy is not 32 bytes.
     #[error("provided entropy is not 32 bytes")]
     InvalidEntropy,
+    /// CipherKeyValue values must be a multiple of 16 bytes.
+    #[error("cipher_key_value: value length {0} is not a multiple of 16")]
+    InvalidCipherValueLength(usize),
 
     /// Invalid TRON transaction.
     #[cfg(feature = "tron")]
     #[error("invalid Tron transaction: {0}")]
     InvalidTronTransaction(String),
+
+    /// Invalid Monero request or device response.
+    #[cfg(feature = "monero")]
+    #[error("Monero: {0}")]
+    InvalidMoneroTransaction(String),
     /// The device erenced a non-existing input or output index.
     #[error("device referenced non-existing input or output index: {0}")]
     TxRequestInvalidIndex(usize),

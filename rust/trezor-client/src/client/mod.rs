@@ -10,11 +10,18 @@ pub use ethereum::*;
 
 #[cfg(feature = "solana")]
 mod solana;
+#[cfg(feature = "solana")]
+pub use solana::*;
 
 #[cfg(feature = "tron")]
 mod tron;
 #[cfg(feature = "tron")]
 pub use tron::*;
+
+#[cfg(feature = "monero")]
+mod monero;
+#[cfg(feature = "monero")]
+pub use monero::*;
 
 pub mod common;
 pub use common::*;
@@ -266,5 +273,39 @@ impl Trezor {
         req.set_peer_public_key(peer_public_key);
         req.set_ecdsa_curve_name(curve);
         self.call(req, Box::new(|_, m| Ok(m)))
+    }
+
+    /// SLIP-0011 symmetric encryption/decryption of a key-value pair with a key
+    /// derived on the device at `path`.
+    ///
+    /// The result is deterministic for a given seed, passphrase, path, `key` and
+    /// ask flags, which makes it suitable for deriving application secrets.
+    /// `value` must be a multiple of 16 bytes. When `iv` is `None` the device
+    /// derives it.
+    #[allow(clippy::too_many_arguments)]
+    pub fn cipher_key_value(
+        &mut self,
+        path: Vec<u32>,
+        key: String,
+        value: Vec<u8>,
+        encrypt: bool,
+        ask_on_encrypt: bool,
+        ask_on_decrypt: bool,
+        iv: Option<Vec<u8>>,
+    ) -> Result<TrezorResponse<'_, Vec<u8>, protos::CipheredKeyValue>> {
+        if value.len() % 16 != 0 {
+            return Err(Error::InvalidCipherValueLength(value.len()));
+        }
+        let mut req = protos::CipherKeyValue::new();
+        req.address_n = path;
+        req.set_key(key);
+        req.set_value(value);
+        req.set_encrypt(encrypt);
+        req.set_ask_on_encrypt(ask_on_encrypt);
+        req.set_ask_on_decrypt(ask_on_decrypt);
+        if let Some(iv) = iv {
+            req.set_iv(iv);
+        }
+        self.call(req, Box::new(|_, m: protos::CipheredKeyValue| Ok(m.value().to_vec())))
     }
 }

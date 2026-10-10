@@ -1,4 +1,4 @@
-use super::{handle_interaction, Trezor};
+use super::{handle_interaction, Trezor, TrezorResponse};
 use crate::{
     error::Result,
     protos::{self, ethereum_sign_tx_eip1559::EthereumAccessList, EthereumTxRequest},
@@ -36,6 +36,20 @@ impl Trezor {
         Ok(address)
     }
 
+    /// Get the address at `path`, optionally displaying it on the device for
+    /// verification. Interaction requests (e.g. a passphrase request) are
+    /// returned to the caller.
+    pub fn ethereum_get_address_with(
+        &mut self,
+        path: Vec<u32>,
+        show_display: bool,
+    ) -> Result<TrezorResponse<'_, String, protos::EthereumAddress>> {
+        let mut req = protos::EthereumGetAddress::new();
+        req.address_n = path;
+        req.set_show_display(show_display);
+        self.call(req, Box::new(|_, m: protos::EthereumAddress| Ok(m.address().into())))
+    }
+
     pub fn ethereum_sign_message(&mut self, message: Vec<u8>, path: Vec<u32>) -> Result<Signature> {
         let mut req = protos::EthereumSignMessage::new();
         req.address_n = path;
@@ -69,7 +83,30 @@ impl Trezor {
         data: Vec<u8>,
         chain_id: Option<u64>,
     ) -> Result<Signature> {
+        self.ethereum_sign_tx_with_definitions(
+            path, nonce, gas_price, gas_limit, to, value, data, chain_id, None,
+        )
+    }
+
+    /// Legacy signing with signed network/token definitions (from
+    /// data.trezor.io) so the device can display unknown tokens and networks.
+    #[allow(clippy::too_many_arguments)]
+    pub fn ethereum_sign_tx_with_definitions(
+        &mut self,
+        path: Vec<u32>,
+        nonce: Vec<u8>,
+        gas_price: Vec<u8>,
+        gas_limit: Vec<u8>,
+        to: String,
+        value: Vec<u8>,
+        data: Vec<u8>,
+        chain_id: Option<u64>,
+        definitions: Option<protos::EthereumDefinitions>,
+    ) -> Result<Signature> {
         let mut req = protos::EthereumSignTx::new();
+        if let Some(defs) = definitions {
+            req.definitions = protobuf::MessageField::some(defs);
+        }
         let mut data = data;
 
         req.address_n = path;
@@ -114,7 +151,42 @@ impl Trezor {
         max_priority_fee: Vec<u8>,
         access_list: Vec<AccessListItem>,
     ) -> Result<Signature> {
+        self.ethereum_sign_eip1559_tx_with_definitions(
+            path,
+            nonce,
+            gas_limit,
+            to,
+            value,
+            data,
+            chain_id,
+            max_gas_fee,
+            max_priority_fee,
+            access_list,
+            None,
+        )
+    }
+
+    /// EIP-1559 signing with signed network/token definitions (from
+    /// data.trezor.io) so the device can display unknown tokens and networks.
+    #[allow(clippy::too_many_arguments)]
+    pub fn ethereum_sign_eip1559_tx_with_definitions(
+        &mut self,
+        path: Vec<u32>,
+        nonce: Vec<u8>,
+        gas_limit: Vec<u8>,
+        to: String,
+        value: Vec<u8>,
+        data: Vec<u8>,
+        chain_id: Option<u64>,
+        max_gas_fee: Vec<u8>,
+        max_priority_fee: Vec<u8>,
+        access_list: Vec<AccessListItem>,
+        definitions: Option<protos::EthereumDefinitions>,
+    ) -> Result<Signature> {
         let mut req = protos::EthereumSignTxEIP1559::new();
+        if let Some(defs) = definitions {
+            req.definitions = protobuf::MessageField::some(defs);
+        }
         let mut data = data;
 
         req.address_n = path;
