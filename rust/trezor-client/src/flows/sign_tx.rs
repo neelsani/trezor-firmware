@@ -101,6 +101,19 @@ fn ack_input_request(req: &protos::TxRequest, psbt: &psbt::Psbt) -> Result<proto
     Ok(msg)
 }
 
+/// The data pushed by an OP_RETURN script (without the opcode and push length).
+fn op_return_payload(script: &bitcoin::Script) -> Vec<u8> {
+    script
+        .instructions()
+        .skip(1)
+        .filter_map(|i| match i {
+            Ok(bitcoin::script::Instruction::PushBytes(b)) => Some(b.as_bytes().to_vec()),
+            _ => None,
+        })
+        .flatten()
+        .collect()
+}
+
 /// Fulfill a TxRequest for TXOUTPUT.
 fn ack_output_request(
     req: &protos::TxRequest,
@@ -150,6 +163,12 @@ fn ack_output_request(
         if let Some(addr) = utils::address_from_script(&output.script_pubkey, network) {
             data_output.set_address(addr.to_string());
         }
+        if output.script_pubkey.is_op_return() {
+            // Data carrier output (e.g. a memo): no address, only its payload.
+            data_output.clear_address();
+            data_output.set_script_type(OutputScriptType::PAYTOOPRETURN);
+            data_output.set_op_return_data(op_return_payload(&output.script_pubkey));
+        }
 
         let psbt_output = psbt
             .outputs
@@ -168,7 +187,7 @@ fn ack_output_request(
             let script_pubkey = &psbt.unsigned_tx.output[output_index].script_pubkey;
             if script_pubkey.is_op_return() {
                 data_output.set_script_type(OutputScriptType::PAYTOOPRETURN);
-                data_output.set_op_return_data(script_pubkey.as_bytes()[1..].to_vec());
+                data_output.set_op_return_data(op_return_payload(script_pubkey));
             } else if script_pubkey.is_p2wpkh() || script_pubkey.is_p2wsh() {
                 data_output.set_script_type(OutputScriptType::PAYTOWITNESS);
             } else if script_pubkey.is_p2tr() {
