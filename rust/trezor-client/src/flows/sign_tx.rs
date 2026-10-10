@@ -159,17 +159,24 @@ fn ack_output_request(
             let (_, (_, path)) = psbt_output.bip32_derivation.iter().next().unwrap();
             data_output.address_n = path.as_ref().iter().map(|i| (*i).into()).collect();
 
-            // Since we know the keypath, it's probably a change output.  So update script_type.
+            // Since we know the keypath, it's probably a change output. The device
+            // derives the output script from `address_n` + `script_type`, so the
+            // address must not be sent as well and the script type must match the
+            // script in the unsigned transaction (otherwise the device would e.g.
+            // pay P2WPKH change to a legacy P2PKH address).
+            data_output.clear_address();
             let script_pubkey = &psbt.unsigned_tx.output[output_index].script_pubkey;
             if script_pubkey.is_op_return() {
                 data_output.set_script_type(OutputScriptType::PAYTOOPRETURN);
                 data_output.set_op_return_data(script_pubkey.as_bytes()[1..].to_vec());
-            } else if psbt_output.witness_script.is_some() {
-                if psbt_output.redeem_script.is_some() {
-                    data_output.set_script_type(OutputScriptType::PAYTOP2SHWITNESS);
-                } else {
-                    data_output.set_script_type(OutputScriptType::PAYTOWITNESS);
-                }
+            } else if script_pubkey.is_p2wpkh() || script_pubkey.is_p2wsh() {
+                data_output.set_script_type(OutputScriptType::PAYTOWITNESS);
+            } else if script_pubkey.is_p2tr() {
+                data_output.set_script_type(OutputScriptType::PAYTOTAPROOT);
+            } else if script_pubkey.is_p2sh() &&
+                (psbt_output.redeem_script.is_some() || psbt_output.witness_script.is_some())
+            {
+                data_output.set_script_type(OutputScriptType::PAYTOP2SHWITNESS);
             } else {
                 data_output.set_script_type(OutputScriptType::PAYTOADDRESS);
             }
