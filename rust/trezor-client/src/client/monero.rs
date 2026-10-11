@@ -168,6 +168,34 @@ impl Trezor {
         Ok(MoneroWatchKey { watch_key: m.watch_key().to_vec(), address })
     }
 
+    /// Ask the device for a signed transaction's private keys (requires confirmation on the
+    /// device). `tx_enc_keys`, `salt1` and `salt2` are what signing returned (`tx_enc_keys`,
+    /// `salt`, `rand_mult`). The device decrypts them and re-encrypts under a key derived from
+    /// the view key; returns `(salt, encrypted keys)` for the host to open.
+    pub fn monero_get_tx_key(
+        &mut self,
+        address_n: Vec<u32>,
+        network_type: MoneroNetworkType,
+        tx_enc_keys: Vec<u8>,
+        salt1: Vec<u8>,
+        salt2: Vec<u8>,
+        tx_prefix_hash: Vec<u8>,
+    ) -> Result<(Vec<u8>, Vec<u8>)> {
+        let mut req = protos::MoneroGetTxKeyRequest::new();
+        req.address_n = address_n;
+        req.set_network_type(network_type);
+        req.set_tx_enc_keys(tx_enc_keys);
+        req.set_salt1(salt1);
+        req.set_salt2(salt2);
+        req.set_tx_prefix_hash(tx_prefix_hash);
+        req.set_reason(0);
+        let m = drive(self.call(req, Box::new(|_, m: protos::MoneroGetTxKeyAck| Ok(m)))?)?;
+        if !m.has_tx_keys() || m.salt().is_empty() {
+            return Err(monero_error("device returned no transaction keys"));
+        }
+        Ok((m.salt().to_vec(), m.tx_keys().to_vec()))
+    }
+
     /// Run the key image sync protocol for `transfers` (requires confirmation on the device).
     ///
     /// `transfers_hash` must be `keccak256(H(t_0) || H(t_1) || ...)` where
