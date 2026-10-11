@@ -50,6 +50,21 @@ impl Trezor {
         self.call(req, Box::new(|_, m: protos::EthereumAddress| Ok(m.address().into())))
     }
 
+    /// The address at `path` with its SLIP-24 MAC (proof to the device that the
+    /// address is its own, for payment requests). Not displayed.
+    pub fn ethereum_get_address_mac(
+        &mut self,
+        path: Vec<u32>,
+    ) -> Result<TrezorResponse<'_, (String, Vec<u8>), protos::EthereumAddress>> {
+        let mut req = protos::EthereumGetAddress::new();
+        req.address_n = path;
+        req.set_show_display(false);
+        self.call(
+            req,
+            Box::new(|_, m: protos::EthereumAddress| Ok((m.address().into(), m.mac().to_vec()))),
+        )
+    }
+
     pub fn ethereum_sign_message(&mut self, message: Vec<u8>, path: Vec<u32>) -> Result<Signature> {
         let mut req = protos::EthereumSignMessage::new();
         req.address_n = path;
@@ -104,6 +119,9 @@ impl Trezor {
         definitions: Option<protos::EthereumDefinitions>,
     ) -> Result<Signature> {
         let mut req = protos::EthereumSignTx::new();
+        if let Some(pr) = self.payment_request.take() {
+            req.payment_req = protobuf::MessageField::some(pr);
+        }
         if let Some(defs) = definitions {
             req.definitions = protobuf::MessageField::some(defs);
         }
@@ -184,6 +202,9 @@ impl Trezor {
         definitions: Option<protos::EthereumDefinitions>,
     ) -> Result<Signature> {
         let mut req = protos::EthereumSignTxEIP1559::new();
+        if let Some(pr) = self.payment_request.take() {
+            req.payment_req = protobuf::MessageField::some(pr);
+        }
         if let Some(defs) = definitions {
             req.definitions = protobuf::MessageField::some(defs);
         }

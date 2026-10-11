@@ -43,11 +43,14 @@ pub struct Trezor {
     // Cached features for later inspection.
     features: Option<protos::Features>,
     transport: Box<dyn Transport>,
+    /// A SLIP-24 payment request for the next signing call (consumed by it):
+    /// the device then shows the swap it pays for, signed by its coordinator.
+    pub payment_request: Option<protos::PaymentRequest>,
 }
 
 /// Create a new Trezor instance with the given transport.
 pub fn trezor_with_transport(model: Model, transport: Box<dyn Transport>) -> Trezor {
-    Trezor { model, transport, features: None }
+    Trezor { model, transport, features: None, payment_request: None }
 }
 
 impl Trezor {
@@ -137,6 +140,12 @@ impl Trezor {
                 }
             }
         }
+    }
+
+    /// A fresh nonce for a SLIP-24 payment request (kept by the device for
+    /// this session and usable once).
+    pub fn get_nonce(&mut self) -> Result<TrezorResponse<'_, Vec<u8>, protos::Nonce>> {
+        self.call(protos::GetNonce::new(), Box::new(|_, m: protos::Nonce| Ok(m.nonce().to_vec())))
     }
 
     pub fn init_device(&mut self, session_id: Option<Vec<u8>>) -> Result<()> {

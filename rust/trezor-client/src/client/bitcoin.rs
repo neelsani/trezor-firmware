@@ -37,6 +37,25 @@ impl Trezor {
         self.call(req, Box::new(|_, m| parse_address(m.address())))
     }
 
+    /// The address at `path` with its SLIP-24 MAC (proof to the device that the
+    /// address is its own, for payment requests). Not displayed.
+    pub fn get_address_mac(
+        &mut self,
+        path: &bip32::DerivationPath,
+        script_type: InputScriptType,
+        network: Network,
+    ) -> Result<TrezorResponse<'_, (String, Vec<u8>), protos::Address>> {
+        let mut req = protos::GetAddress::new();
+        req.address_n = utils::convert_path(path);
+        req.set_coin_name(utils::coin_name(network)?);
+        req.set_show_display(false);
+        req.set_script_type(script_type);
+        self.call(
+            req,
+            Box::new(|_, m: protos::Address| Ok((m.address().to_owned(), m.mac().to_vec()))),
+        )
+    }
+
     pub fn sign_tx(
         &mut self,
         psbt: &psbt::Psbt,

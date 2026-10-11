@@ -119,6 +119,7 @@ fn ack_output_request(
     req: &protos::TxRequest,
     psbt: &psbt::Psbt,
     network: Network,
+    with_payment_request: bool,
 ) -> Result<protos::TxAck> {
     if req.details.is_none() || !req.details.has_request_index() {
         return Err(Error::MalformedTxRequest(req.clone()));
@@ -201,6 +202,12 @@ fn ack_output_request(
             }
         }
 
+        // Every output of a transaction paying a SLIP-24 payment request
+        // belongs to request 0 (change included), so the device checks them
+        // against it.
+        if with_payment_request {
+            data_output.set_payment_req_index(0);
+        }
         trace!("Prepared output to ack: {:?}", data_output);
         txdata.outputs.push(data_output);
     };
@@ -335,12 +342,20 @@ impl<'a> SignTxProgress<'a> {
 
         let ack = match self.req.request_type() {
             TxRequestType::TXINPUT => ack_input_request(&self.req, psbt),
-            TxRequestType::TXOUTPUT => ack_output_request(&self.req, psbt, network),
+            TxRequestType::TXOUTPUT => {
+                ack_output_request(&self.req, psbt, network, self.client.payment_request.is_some())
+            }
+            TxRequestType::TXPAYMENTREQ => {
+                let pr = self
+                    .client
+                    .payment_request
+                    .clone()
+                    .ok_or_else(|| Error::MalformedTxRequest(self.req.clone()))?;
+                return self.client.call(pr, Box::new(|c, m| Ok(SignTxProgress::new(c, m))));
+            }
             TxRequestType::TXMETA => ack_meta_request(&self.req, psbt),
             TxRequestType::TXEXTRADATA => unimplemented!(), //TODO(stevenroose) implement
-            TxRequestType::TXORIGINPUT |
-            TxRequestType::TXORIGOUTPUT |
-            TxRequestType::TXPAYMENTREQ => unimplemented!(),
+            TxRequestType::TXORIGINPUT | TxRequestType::TXORIGOUTPUT => unimplemented!(),
             TxRequestType::TXFINISHED => unreachable!(),
         }?;
         self.ack_msg(ack)
