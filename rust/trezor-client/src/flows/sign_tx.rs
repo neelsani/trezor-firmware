@@ -114,11 +114,15 @@ fn op_return_payload(script: &bitcoin::Script) -> Vec<u8> {
         .collect()
 }
 
+/// Encodes an output script as an address of the coin being signed for (`None` when it has no
+/// address form).
+pub type AddressEncoder<'e> = &'e dyn Fn(&bitcoin::Script) -> Option<String>;
+
 /// Fulfill a TxRequest for TXOUTPUT.
 fn ack_output_request(
     req: &protos::TxRequest,
     psbt: &psbt::Psbt,
-    network: Network,
+    encode: AddressEncoder<'_>,
     with_payment_request: bool,
 ) -> Result<protos::TxAck> {
     if req.details.is_none() || !req.details.has_request_index() {
@@ -161,8 +165,8 @@ fn ack_output_request(
         data_output.set_amount(output.value.to_sat());
         // Set script type to PAYTOADDRESS unless we find out otherwise from the PSBT.
         data_output.set_script_type(OutputScriptType::PAYTOADDRESS);
-        if let Some(addr) = utils::address_from_script(&output.script_pubkey, network) {
-            data_output.set_address(addr.to_string());
+        if let Some(addr) = encode(&output.script_pubkey) {
+            data_output.set_address(addr);
         }
         if output.script_pubkey.is_op_return() {
             // Data carrier output (e.g. a memo): no address, only its payload.
@@ -338,12 +342,22 @@ impl<'a> SignTxProgress<'a> {
         psbt: &psbt::Psbt,
         network: Network,
     ) -> Result<TrezorResponse<'a, SignTxProgress<'a>, protos::TxRequest>> {
+        self.ack_psbt_with(psbt, &|s| utils::address_from_script(s, network).map(|a| a.to_string()))
+    }
+
+    /// [`Self::ack_psbt`] for any Bitcoin-like coin: `encode` gives the address the device
+    /// expects for an external output's script.
+    pub fn ack_psbt_with(
+        self,
+        psbt: &psbt::Psbt,
+        encode: AddressEncoder<'_>,
+    ) -> Result<TrezorResponse<'a, SignTxProgress<'a>, protos::TxRequest>> {
         assert!(self.req.request_type() != TxRequestType::TXFINISHED);
 
         let ack = match self.req.request_type() {
             TxRequestType::TXINPUT => ack_input_request(&self.req, psbt),
             TxRequestType::TXOUTPUT => {
-                ack_output_request(&self.req, psbt, network, self.client.payment_request.is_some())
+                ack_output_request(&self.req, psbt, encode, self.client.payment_request.is_some())
             }
             TxRequestType::TXPAYMENTREQ => {
                 let pr = self

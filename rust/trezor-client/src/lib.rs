@@ -40,7 +40,7 @@ pub use messages::TrezorMessage;
 #[cfg(feature = "tron")]
 pub use client::{tron_parse_raw_transaction, TronContract};
 #[cfg(feature = "bitcoin")]
-pub use flows::sign_tx::SignTxProgress;
+pub use flows::sign_tx::{AddressEncoder, SignTxProgress};
 #[cfg(feature = "bitcoin")]
 pub use protos::InputScriptType;
 
